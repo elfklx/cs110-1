@@ -1,1 +1,0 @@
-search.o: search.cc
