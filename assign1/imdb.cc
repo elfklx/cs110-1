@@ -32,23 +32,38 @@ imdb::~imdb() {
 
 bool imdb::getCredits(const string& player, vector<film>& films) const {
   const void * file = actorFile; 
-  int numActor = *((int *) file);
+  int numRecord = *((int *) file);
   int *start = ((int *) file) + 1;
-  vector<int> v(start, start + numActor);
+  vector<int> v(start, start + numRecord);
   intptr_t target = player.c_str() - (char *) file;
   vector<int>::iterator lower;
-  lower  = lower_bound(v.begin(), v.end(), target, [file](intptr_t l, intptr_t r) -> bool {
-    printf("%s-----%s\n", (char *) file + l, (char *) file + r);
-    return strcmp((char *) file + l, (char *) file + r);
+  lower = lower_bound(v.begin(), v.end(), target, [file](intptr_t l, intptr_t r) -> bool {
+    return strcmp((char *) file + l, (char *) file + r) < 0;
   });
-  cout << *lower << endl;
-  cout << (lower - v.begin()) << endl;
-  cout << numActor << endl;
-  return false; 
+  char *actorRecord = (char *) file + (*lower);
+  bool found = strcmp(actorRecord, player.c_str()) == 0;
+  if (!found) return false;
+  int nameLen = strlen(actorRecord) + 1;
+  if (nameLen % 2 == 1) nameLen += 1;
+  int headerLen = nameLen + 2;
+  if (headerLen % 4 != 0) headerLen += 2;
+  short actorNumMovie = *(short *)(actorRecord + nameLen);
+  int *actorMoviePayload = (int *)(actorRecord + headerLen);
+  for (short i = 0; i < actorNumMovie; i++) {
+    int *curr = actorMoviePayload + i;
+    char *movieRecord = (char *) movieFile + (*curr);
+    int mNameLen = strlen(movieRecord) + 1;
+    char *year = movieRecord + mNameLen;
+    struct film f;
+    f.title = movieRecord;
+    f.year = 1900 + (*year);
+    films.push_back(f);
+  }
+  return true;
 }
 
-bool imdb::getCast(const film& movie, vector<string>& players) const { 
-  return false; 
+bool imdb::getCast(const film& movie, vector<string>& players) const {
+  return false;
 }
 
 const void *imdb::acquireFileMap(const string& fileName, struct fileInfo& info) {
