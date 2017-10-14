@@ -4,9 +4,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "imdb.h"
-#include <iostream>
 #include <algorithm>
-#include <stdio.h>
 #include <vector>
 #include <string.h>
 #include <assert.h>
