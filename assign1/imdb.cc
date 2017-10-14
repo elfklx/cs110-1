@@ -4,6 +4,11 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "imdb.h"
+#include <iostream>
+#include <algorithm>
+#include <stdio.h>
+#include <vector>
+#include <string.h>
 using namespace std;
 
 const char *const imdb::kActorFileName = "actordata";
@@ -25,7 +30,20 @@ imdb::~imdb() {
   releaseFileMap(movieInfo);
 }
 
-bool imdb::getCredits(const string& player, vector<film>& films) const { 
+bool imdb::getCredits(const string& player, vector<film>& films) const {
+  const void * file = actorFile; 
+  int numActor = *((int *) file);
+  int *start = ((int *) file) + 1;
+  vector<int> v(start, start + numActor);
+  intptr_t target = player.c_str() - (char *) file;
+  vector<int>::iterator lower;
+  lower  = lower_bound(v.begin(), v.end(), target, [file](intptr_t l, intptr_t r) -> bool {
+    printf("%s-----%s\n", (char *) file + l, (char *) file + r);
+    return strcmp((char *) file + l, (char *) file + r);
+  });
+  cout << *lower << endl;
+  cout << (lower - v.begin()) << endl;
+  cout << numActor << endl;
   return false; 
 }
 
