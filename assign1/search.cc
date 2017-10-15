@@ -27,7 +27,6 @@ static path backTrace(const unordered_map<string, pair<string, film>>& parents, 
 }
 
 static path findPath(const imdb& db, const string& startPlayer, const string& endPlayer) {
-  path p(endPlayer);
   unordered_set<string> visitedActors;
   set<film> visitedMovies;
   unordered_map<string, pair<string, film>> parents;
@@ -55,7 +54,15 @@ static path findPath(const imdb& db, const string& startPlayer, const string& en
       }
     }
   }
-  return p;
+  return path(startPlayer);
+}
+
+static bool sanity(const imdb& db, const string& startPlayer, const string& endPlayer) {
+  vector<film> credits;
+  if (!db.getCredits(startPlayer, credits) || credits.size() == 0) return false;
+  credits.clear();
+  if (!db.getCredits(endPlayer, credits) || credits.size() == 0) return false;
+  return true;
 }
 
 int main(int argc, char *argv[]) {
@@ -78,12 +85,17 @@ int main(int argc, char *argv[]) {
 
   string startPlayer = argv[1];
   string endPlayer = argv[2];
-  path p = findPath(db, startPlayer, endPlayer);
 
-  if (p.getLength() == 0) {
-    cout << "No path between those two people could be found." << endl;
+  string msgNoPathFound = "No path between those two people could be found.";
+  if (!sanity(db, startPlayer, endPlayer)) {
+    cout << msgNoPathFound << endl;
   } else {
-    cout << p;
+    path p = findPath(db, startPlayer, endPlayer);
+    if (p.getLength() == 0) {
+      cout << msgNoPathFound << endl;
+    } else {
+      cout << p;
+    }
   }
 
   return 0;
