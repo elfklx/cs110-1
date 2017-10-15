@@ -12,6 +12,7 @@ using namespace std;
 static const int kWrongArgumentCount = 1;
 static const int kSourceTargetSame = 2;
 static const int kDatabaseNotFound = 3;
+static const int MAX_DEGREE = 6;
 
 
 static path backTrace(const unordered_map<string, pair<string, film>>& parents, const string& startPlayer, const string& endPlayer) {
@@ -34,12 +35,14 @@ static path findPath(const imdb& db, const string& startPlayer, const string& en
   unordered_set<string> visitedActors;
   unordered_set<film, filmHash> visitedMovies;
   unordered_map<string, pair<string, film>> parents;
-  queue<string> q;
-  q.push(startPlayer);
+  queue<pair<string,int>> q;
+  q.push(pair<string, int>(startPlayer, 0));
   visitedActors.insert(startPlayer);
   while (!q.empty()) {
-    string player = q.front();
+    pair<string, int> pa = q.front();
     q.pop();
+    string player = pa.first;
+    int degree = pa.second;
     vector<film> credits;
     db.getCredits(player, credits);
     for (film f: credits) {
@@ -51,7 +54,9 @@ static path findPath(const imdb& db, const string& startPlayer, const string& en
           if (visitedActors.find(actor) == visitedActors.end()) {
             parents[actor] = pair<string, film>(player, f);
             if (actor == endPlayer) return backTrace(parents, startPlayer, endPlayer);
-            q.push(actor);
+            if (degree + 1 < MAX_DEGREE) {
+              q.push(pair<string, int>(actor, degree + 1));
+            }
             visitedActors.insert(actor);
           }
         }
