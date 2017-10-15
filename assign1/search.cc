@@ -2,7 +2,6 @@
 #include <iostream>
 #include <string>
 #include <queue>
-#include <set>
 #include <unordered_set>
 #include <unordered_map>
 #include "path.h"
@@ -27,8 +26,13 @@ static path backTrace(const unordered_map<string, pair<string, film>>& parents, 
 }
 
 static path findPath(const imdb& db, const string& startPlayer, const string& endPlayer) {
+  struct filmHash {
+    size_t operator()(film f) const {
+      return hash<string>()(f.title) ^ hash<int>()(f.year);
+    }
+  };
   unordered_set<string> visitedActors;
-  set<film> visitedMovies;
+  unordered_set<film, filmHash> visitedMovies;
   unordered_map<string, pair<string, film>> parents;
   queue<string> q;
   q.push(startPlayer);
