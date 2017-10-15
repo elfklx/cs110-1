@@ -82,6 +82,8 @@ class imdb {
   static const char *const kMovieFileName;
   const void *actorFile;
   const void *movieFile;
+  std::vector<int> getRecordNodes(const void *file) const;
+  film getFilm(char *movieRecord) const;
   
   // everything below here is complicated and needn't be touched.
   // you're free to investigate, but you're on your own.
