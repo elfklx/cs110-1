@@ -21,16 +21,12 @@ int file_getblock(struct unixfilesystem *fs, int inumber, int blockNum, void *bu
   }
   int fileSize = inode_getsize(&in);
   int numValidBytes = MIN(fileSize - blockNum * DISKIMG_SECTOR_SIZE, DISKIMG_SECTOR_SIZE);
-  char buffer[DISKIMG_SECTOR_SIZE];
-  int numRead = diskimg_readsector(fs->dfd, actualBlockNum, buffer);
-  if (numRead == -1) {
+  char fileBuffer[DISKIMG_SECTOR_SIZE];
+  int numRead = diskimg_readsector(fs->dfd, actualBlockNum, fileBuffer);
+  if (numRead == -1 || numRead != DISKIMG_SECTOR_SIZE) {
     fprintf(stderr, "error occurred when calling diskimg_readsector.\n");
     return -1;
-  } else if (numRead != DISKIMG_SECTOR_SIZE) {
-    fprintf(stderr, "diskimg_readsector: num of bytes %d read from sector %d doesn't match DISKIMG_SECTOR_SIZE %d. numValidBytes: %d\n",
-      numRead, actualBlockNum, DISKIMG_SECTOR_SIZE, numValidBytes);
-    return -1;
   }
-  memcpy(buf, buffer, numValidBytes);
+  memcpy(buf, fileBuffer, numValidBytes);
   return numValidBytes;
 }
