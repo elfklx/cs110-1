@@ -47,6 +47,12 @@ static void simpleTest() {
   launchPipedExecutables(argv1, argv2);
 }
 
+static void testCase2() {
+  char *argv1[] = {"sleep", "10", NULL};
+  char *argv2[] = {"sleep", "10", NULL};
+  launchPipedExecutables(argv1, argv2);
+}
+
 int main(int argc, char *argv[]) {
   simpleTest();
   return 0;
