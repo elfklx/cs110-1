@@ -48,8 +48,15 @@ static void simpleTest() {
 }
 
 static void testCase2() {
+  // should take around 10 seconds
   char *argv1[] = {"sleep", "10", NULL};
   char *argv2[] = {"sleep", "10", NULL};
+  launchPipedExecutables(argv1, argv2);
+}
+
+static void testCase3() {
+  char *argv1[] = {"ls", "-al", NULL};
+  char *argv2[] = {"head", "-n", "3", NULL};
   launchPipedExecutables(argv1, argv2);
 }
 

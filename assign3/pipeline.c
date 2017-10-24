@@ -13,17 +13,22 @@
 void pipeline(char *argv1[], char *argv2[], pid_t pids[]) {
   int fds[2];
   pipe(fds);
-  pid_t twinProcessPid = fork();
-  if (twinProcessPid == 0) {
-    close(fds[1]); // close child input
-    dup2(fds[0], 0); // child input to stdin
+  pid_t firstChild = fork();
+  if (firstChild == 0) {
+    close(fds[0]);
+    dup2(fds[1], 1);
+    close(fds[1]);
+    execvp(argv1[0], argv1);
+  }
+  pid_t secondChild = fork();
+  if (secondChild == 0) {
+    close(fds[1]);
+    dup2(fds[0], 0);
     close(fds[0]);
     execvp(argv2[0], argv2);
   }
-  pids[0] = getpid();
-  pids[1] = twinProcessPid;
-  close(fds[0]); // close parent output
-  dup2(fds[1], 1); // parent output to stdout
+  close(fds[0]);
   close(fds[1]);
-  execvp(argv1[0], argv1);
+  pids[0] = firstChild;
+  pids[1] = secondChild;
 }
