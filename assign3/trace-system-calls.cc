@@ -13,7 +13,7 @@
 #include <ext/stdio_filebuf.h>
 #include <sys/wait.h>
 #include "subprocess.h"
-#include "string-utils.h"
+//#include "string-utils.h"
 #include "trace-exception.h"
 
 using namespace std;
@@ -195,7 +195,7 @@ static void processSystemCallArguments(const string& macro, int numArguments, sy
   assert(int(sm.size()) == (2 * numArguments + 1));
   for (int i = 0; i < numArguments; i++) {
     string type = sm[2 * i + 1];
-    scParamType normalizedType = normalizeType(trim(type));
+    scParamType normalizedType = normalizeType(type);
     parameterTypes.push_back(normalizedType);
   }
 }
@@ -229,7 +229,7 @@ static string ingestEntireMacro(ifstream& infile, const string& firstLine) {
  */
 static void processSystemCallSignature(const string& macro, map<string, systemCallSignature>& systemCallSignatures, const map<string, int>& systemCallNames) {
   pair<string, int> p = processNameAndArgumentCount(macro, systemCallSignatures);
-  const string& name = trim(p.first);
+  const string& name = p.first;
   int numArguments = p.second;
   if (systemCallNames.find(name) == systemCallNames.cend() ||
       systemCallSignatures.find(name) != systemCallSignatures.cend()) return; // either don't know the system call or we've already processed it
