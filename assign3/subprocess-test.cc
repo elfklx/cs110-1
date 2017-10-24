@@ -63,7 +63,7 @@ static void waitForChildProcess(pid_t pid) {
  * --------------
  * Serves as the entry point for for the unit test.
  */
-const string kSortExecutable = "/usr/bin/sort";
+const string kSortExecutable = "sort";
 int main(int argc, char *argv[]) {
   try {
     char *argv[] = {const_cast<char *>(kSortExecutable.c_str()), NULL};
