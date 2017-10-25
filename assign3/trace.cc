@@ -33,5 +33,14 @@ int main(int argc, char *argv[]) {
     return 0;
   }
 
+  // load system calls
+  map<int, string> errorConstants;
+  compileSystemCallErrorStrings(errorConstants);
+  map<int, string> systemCallNumbers;
+  map<string, int> systemCallNames;
+  map<string, systemCallSignature> systemCallSignatures;
+  compileSystemCallData(systemCallNumbers, systemCallNames, systemCallSignatures, rebuild);
+
+  // main code
   return 0;
 }
