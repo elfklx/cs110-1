@@ -13,11 +13,23 @@
 #include <ext/stdio_filebuf.h>
 #include <sys/wait.h>
 #include "subprocess.h"
-//#include "string-utils.h"
+// #include "string-utils.h"
 #include "trace-exception.h"
 
 using namespace std;
 using namespace __gnu_cxx;
+
+// Implement trim due to lack of string-utils.h
+const string& trim(string s) {
+  s.erase(s.begin(), find_if(s.begin(), s.end(), [](int ch) {
+    return !isspace(ch);
+  }));
+  s.erase(find_if(s.rbegin(), s.rend(), [](int ch) {
+    return !isspace(ch);
+  }).base(), s.end());
+  const string& x = s;
+  return x;
+}
 
 /**
  * Functions: overloads of operator<<, operator>> for scParamType
@@ -60,7 +72,8 @@ istream& operator>>(istream& is, scParamType& type) {
  * x86_32 maps 1 to exit).  We're only concerned with x86_64, so we engineer the system call information compiler
  * to be x86_64-specific.
  */
-static const string kUniversalStandardAbsoluteFilename = "/usr/include/x86_64-linux-gnu/asm/unistd_64.h";
+// static const string kUniversalStandardAbsoluteFilename = "/usr/include/x86_64-linux-gnu/asm/unistd_64.h";
+static const string kUniversalStandardAbsoluteFilename = "/usr/src/linux-aws-headers-4.4.0-1038/arch/sh/include/uapi/asm/unistd_64.h";
 
 /**
  * Constant: kSystemCallNumberDefinePattern
@@ -195,7 +208,7 @@ static void processSystemCallArguments(const string& macro, int numArguments, sy
   assert(int(sm.size()) == (2 * numArguments + 1));
   for (int i = 0; i < numArguments; i++) {
     string type = sm[2 * i + 1];
-    scParamType normalizedType = normalizeType(type);
+    scParamType normalizedType = normalizeType(trim(type));
     parameterTypes.push_back(normalizedType);
   }
 }
@@ -229,7 +242,7 @@ static string ingestEntireMacro(ifstream& infile, const string& firstLine) {
  */
 static void processSystemCallSignature(const string& macro, map<string, systemCallSignature>& systemCallSignatures, const map<string, int>& systemCallNames) {
   pair<string, int> p = processNameAndArgumentCount(macro, systemCallSignatures);
-  const string& name = p.first;
+  const string& name = trim(p.first);
   int numArguments = p.second;
   if (systemCallNames.find(name) == systemCallNames.cend() ||
       systemCallSignatures.find(name) != systemCallSignatures.cend()) return; // either don't know the system call or we've already processed it
@@ -351,7 +364,8 @@ static void processAllKernelSourceFiles(const subprocess_t& sp, map<string, syst
  * kKernelSourceFileFinderCommand defines the argument vector that should be invoked in a subprocess that knows how to
  * list all of the source file names, one per line, so that each can be opened and searched for SYSCALL_DEFINE macros.
  */
-static const string kKernelSourceCodeDirectory = "/usr/src/linux-source-3.13.0/linux-source-3.13.0";
+// static const string kKernelSourceCodeDirectory = "/usr/src/linux-source-3.13.0/linux-source-3.13.0";
+static const string kKernelSourceCodeDirectory = "/usr/src/linux-source-4.4.0/linux-source-4.4.0";
 static const char *const kKernelSourceFileFinderCommand[] = {"find", kKernelSourceCodeDirectory.c_str(), "-name", "*.c", "-print", NULL};
 static void collectSystemCallSignatures(map<string, systemCallSignature>& systemCallSignatures, const map<string, int>& systemCallNames, bool rebuild) {
   if (!rebuild && loadSignaturesFromCache(systemCallSignatures)) return;
