@@ -25,6 +25,8 @@
 #include "trace-exception.h"
 using namespace std;
 
+int wait_for_syscall(pid_t child, int &status);
+
 int main(int argc, char *argv[]) {
   bool simple = false, rebuild = false;
   int numFlags = processCommandLineFlags(simple, rebuild, argv);
@@ -41,6 +43,40 @@ int main(int argc, char *argv[]) {
   map<string, systemCallSignature> systemCallSignatures;
   compileSystemCallData(systemCallNumbers, systemCallNames, systemCallSignatures, rebuild);
 
-  // main code
+  pid_t child = fork();
+  if (child == 0) {
+    char *args[argc - numFlags];
+    memcpy(args, argv + 1 + numFlags, (argc - 1 - numFlags) * sizeof(char *));
+    args[argc - numFlags - 1] = NULL;
+    ptrace(PTRACE_TRACEME);
+    raise(SIGSTOP);
+    execvp(args[0], args);
+  } else {
+    int status;
+    long syscall, retval;
+    waitpid(child, &status, 0);
+    ptrace(PTRACE_SETOPTIONS, child, 0, PTRACE_O_TRACESYSGOOD);
+    while (1) {
+      if (wait_for_syscall(child, status) != 0) break;
+      syscall = ptrace(PTRACE_PEEKUSER, child, ORIG_RAX * sizeof(long));
+      printf("syscall(%ld) = ", syscall);
+      if (wait_for_syscall(child, status) != 0) {
+        printf("<no return>\n");
+        break;
+      }
+      retval = ptrace(PTRACE_PEEKUSER, child, RAX * sizeof(long));
+      printf("%ld\n", retval);
+    }
+    printf("Program exited normally with status %d\n", WEXITSTATUS(status));
+  }
   return 0;
+}
+
+int wait_for_syscall(pid_t child, int &status) {
+  while (1) {
+    ptrace(PTRACE_SYSCALL, child, 0, 0);
+    waitpid(child, &status, 0);
+    if (WIFSTOPPED(status) && WSTOPSIG(status) & 0x80) return 0;
+    if (WIFEXITED(status)) return 1;
+  }
 }
