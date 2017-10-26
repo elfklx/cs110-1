@@ -30,6 +30,9 @@ static const int systemCallArgRegs[8] = {RDI, RSI, RDX, R10, R8, R9};
 int wait_for_syscall(pid_t child, int &status);
 char *read_string(pid_t child, void *addr);
 
+/*
+ * Ref: https://blog.nelhage.com/2010/08/write-yourself-an-strace-in-70-lines-of-code/
+ */
 int main(int argc, char *argv[]) {
   bool simple = false, rebuild = false;
   int numFlags = processCommandLineFlags(simple, rebuild, argv);
