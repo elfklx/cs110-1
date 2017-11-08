@@ -35,11 +35,11 @@ static void markWorkersAsAvailable(int sig) {
       }
     }
   }
+  sleep(1);
 }
 
 static const char *kWorkerArguments[] = {"./factor.py", "--self-halting", NULL};
 static void spawnAllWorkers() {
-  // TODO specify CPU
   cout << "There are this many CPUs: " << kNumCPUs << ", numbered 0 through " << kNumCPUs - 1 << "." << endl;
   sigset_t mask;
   sigemptyset(&mask);
@@ -48,28 +48,33 @@ static void spawnAllWorkers() {
   for (size_t i = 0; i < kNumCPUs; i++) {
     struct worker w(const_cast<char **>(kWorkerArguments));
     workers[i] = w;
+    // set child process i to run on CPU i
+    cpu_set_t cpu_set;
+    CPU_ZERO(&cpu_set);
+    CPU_SET(i, &cpu_set);
+    sched_setaffinity(workers[i].sp.pid, sizeof(cpu_set_t), &cpu_set);
     cout << "Worker " << workers[i].sp.pid << " is set to run on CPU " << i << "." << endl;
   }
   sigprocmask(SIG_UNBLOCK, &mask, NULL); // unblock SIGCHLD
 }
 
 static size_t getAvailableWorker() {
+  sigset_t additions, existingmask;
+  sigemptyset(&additions);
+  sigaddset(&additions, SIGCHLD);
+  sigprocmask(SIG_BLOCK, &additions, &existingmask); // wait for SIGCHLD to arrive
   while (numWorkersAvailable == 0) {
-    sleep(1);
+    sigsuspend(&existingmask);
   }
-  // if (numWorkersAvailable == 0) {
-  //   sigset_t mask;
-  //   sigemptyset(&mask);
-  //   sigaddset(&mask, SIGCHLD);
-  //   sigsuspend(&mask);
-  // }
   for (size_t i = 0; i < workers.size(); i++) {
     if (workers[i].available) {
       workers[i].available = false;
       numWorkersAvailable--;
+      sigprocmask(SIG_UNBLOCK, &additions, NULL);
       return i;
     }
   }
+  throw;
 }
 
 static void broadcastNumbersToWorkers() {
@@ -78,7 +83,7 @@ static void broadcastNumbersToWorkers() {
     getline(cin, line);
     if (cin.fail()) break;
     size_t endpos;
-    /* long long num = */ stoll(line, &endpos); // TODO try catch
+    /* long long num = */ stoll(line, &endpos);
     if (endpos != line.size()) break;
     size_t w = getAvailableWorker();
     write(workers[w].sp.supplyfd, line.c_str(), line.size());
@@ -89,16 +94,14 @@ static void broadcastNumbersToWorkers() {
 
 // wait for all workers to be available
 static void waitForAllWorkers() {
-  while (true) {
-    bool allAvailable = true;
-    for (const worker& w : workers) {
-      if (!w.available) {
-        allAvailable = false;
-        break;
-      }
-    }
-    if (allAvailable) return;
+  sigset_t additions, existingmask;
+  sigemptyset(&additions);
+  sigaddset(&additions, SIGCHLD);
+  sigprocmask(SIG_BLOCK, &additions, &existingmask); // wait for SIGCHLD to arrive
+  while (numWorkersAvailable != workers.size()) {
+    sigsuspend(&existingmask);
   }
+  sigprocmask(SIG_UNBLOCK, &additions, NULL);
 }
 
 static void closeAllWorkers() {
