@@ -44,17 +44,32 @@ static void spawnAllWorkers() {
   sigset_t mask;
   sigemptyset(&mask);
   sigaddset(&mask, SIGCHLD);
+  sigprocmask(SIG_BLOCK, &mask, NULL); // block SIGCHLD
   for (size_t i = 0; i < kNumCPUs; i++) {
-    // sigprocmask(SIG_BLOCK, &mask, NULL); // block SIGCHLD
     struct worker w(const_cast<char **>(kWorkerArguments));
     workers[i] = w;
-    // sigprocmask(SIG_UNBLOCK, &mask, NULL);
     cout << "Worker " << workers[i].sp.pid << " is set to run on CPU " << i << "." << endl;
   }
+  sigprocmask(SIG_UNBLOCK, &mask, NULL); // unblock SIGCHLD
 }
 
 static size_t getAvailableWorker() {
-  return 0;
+  while (numWorkersAvailable == 0) {
+    sleep(1);
+  }
+  // if (numWorkersAvailable == 0) {
+  //   sigset_t mask;
+  //   sigemptyset(&mask);
+  //   sigaddset(&mask, SIGCHLD);
+  //   sigsuspend(&mask);
+  // }
+  for (size_t i = 0; i < workers.size(); i++) {
+    if (workers[i].available) {
+      workers[i].available = false;
+      numWorkersAvailable--;
+      return i;
+    }
+  }
 }
 
 static void broadcastNumbersToWorkers() {
@@ -63,13 +78,12 @@ static void broadcastNumbersToWorkers() {
     getline(cin, line);
     if (cin.fail()) break;
     size_t endpos;
-    long long num = stoll(line, &endpos);
+    /* long long num = */ stoll(line, &endpos); // TODO try catch
     if (endpos != line.size()) break;
-    // you shouldn't need all that many lines of additional code
-    size_t availableWorker = getAvailableWorker();
-    workers[availableWorker].available = false;
-    write(workers[availableWorker].sp.supplyfd, line.c_str(), line.size());
-    write(workers[availableWorker].sp.supplyfd, "\n", 2);
+    size_t w = getAvailableWorker();
+    write(workers[w].sp.supplyfd, line.c_str(), line.size());
+    write(workers[w].sp.supplyfd, "\n", 1);
+    kill(workers[w].sp.pid, SIGCONT);
   }
 }
 
@@ -102,7 +116,7 @@ static void closeAllWorkers() {
 int main(int argc, char *argv[]) {
   signal(SIGCHLD, markWorkersAsAvailable);
   spawnAllWorkers();
-  // broadcastNumbersToWorkers();
+  broadcastNumbersToWorkers();
   waitForAllWorkers();
   closeAllWorkers();
   return 0;
