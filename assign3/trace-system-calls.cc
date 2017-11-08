@@ -13,11 +13,23 @@
 #include <ext/stdio_filebuf.h>
 #include <sys/wait.h>
 #include "subprocess.h"
-#include "string-utils.h"
+// #include "string-utils.h"
 #include "trace-exception.h"
 
 using namespace std;
 using namespace __gnu_cxx;
+
+// Implement trim due to lack of string-utils.h
+const string& trim(string s) {
+  s.erase(s.begin(), find_if(s.begin(), s.end(), [](int ch) {
+    return !isspace(ch);
+  }));
+  s.erase(find_if(s.rbegin(), s.rend(), [](int ch) {
+    return !isspace(ch);
+  }).base(), s.end());
+  const string& x = s;
+  return x;
+}
 
 /**
  * Functions: overloads of operator<<, operator>> for scParamType
@@ -60,7 +72,8 @@ istream& operator>>(istream& is, scParamType& type) {
  * x86_32 maps 1 to exit).  We're only concerned with x86_64, so we engineer the system call information compiler
  * to be x86_64-specific.
  */
-static const string kUniversalStandardAbsoluteFilename = "/usr/include/x86_64-linux-gnu/asm/unistd_64.h";
+// static const string kUniversalStandardAbsoluteFilename = "/usr/include/x86_64-linux-gnu/asm/unistd_64.h";
+static const string kUniversalStandardAbsoluteFilename = "/home/ubuntu/cs110/assign3/unistd_64.h";
 
 /**
  * Constant: kSystemCallNumberDefinePattern
