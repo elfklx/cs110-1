@@ -25,7 +25,10 @@ using namespace std;
 
 static STSHJobList joblist; // the one piece of global data we need so signal handlers can access it
 static const string kFgUsage = "Usage: fg <jobid>.";
+static const string kBgUsage = "Usage: bg <jobid>.";
 static const string kSlayUsage = "Usage: slay <jobid> <index> | <pid>.";
+static const string kHaltUsage = "Usage: halt <jobid> <index> | <pid>.";
+static const string kContUsage = "Usage: cont <jobid> <index> | <pid>.";
 
 static size_t getArgvLen(const command& cmd) {
   for (size_t i = 0; i < kMaxArguments + 1; i++) {
@@ -54,30 +57,87 @@ static void waitForFgJobToFinish() {
   sigprocmask(SIG_UNBLOCK, &additions, NULL);
 }
 
-static void fg(const command& cmd) {
-  const string& usage = kFgUsage;
-  // input sanity check
+static STSHProcess& getProcessFromInput(const command& cmd, const string& usage) {
+  size_t argc = getArgvLen(cmd);
+  if (argc < 1 || argc > 2) throw STSHException(usage);
+  size_t pid;
+  if (argc == 1) {
+    pid = parseNumber(cmd.tokens[0], usage);
+    if (!joblist.containsProcess(pid)) {
+      throw STSHException("No process with pid " + to_string(pid) + ".");
+    }
+  } else {
+    size_t jobnum = parseNumber(cmd.tokens[0], usage);
+    size_t processnum = parseNumber(cmd.tokens[1], usage);
+    if (!joblist.containsJob(jobnum)) {
+      throw STSHException("No job with id of " + to_string(jobnum) + ".");
+    }
+    vector<STSHProcess>& processes = joblist.getJob(jobnum).getProcesses();
+    if (processnum >= processes.size()) {
+      throw STSHException("Job " + to_string(jobnum) +
+        " doesn't have a process at index " + to_string(processnum) + ".");
+    }
+    pid = processes[processnum].getID();
+  }
+  return joblist.getJobWithProcess(pid).getProcess(pid);
+}
+
+static STSHJob& getBgJobFromInput(const command& cmd, const string& usage, const string& caller) {
   size_t argc = getArgvLen(cmd);
   if (argc != 1) throw STSHException(usage);
   size_t jobnum = parseNumber(cmd.tokens[0], usage);
-
   if (!joblist.containsJob(jobnum)) {
-    throw STSHException("fg " + to_string(jobnum) + ": No such job.");
+    throw STSHException(caller + " " + to_string(jobnum) + ": No such job.");
   }
   STSHJob& job = joblist.getJob(jobnum);
   assert(job.getState() != kForeground);
+  return job;
+}
+
+static void fg(const command& cmd) {
+  const string& usage = kFgUsage;
+  STSHJob& job = getBgJobFromInput(cmd, usage, "fg");
   for (const auto& p : job.getProcesses()) {
     if (p.getState() == kStopped) {
       kill(-job.getGroupID(), SIGCONT);
-      job.setState(kForeground);
-      waitForFgJobToFinish();
-      return;
+      break;
+    }
+  }
+  job.setState(kForeground);
+  waitForFgJobToFinish();
+}
+
+static void bg(const command& cmd) {
+  const string& usage = kBgUsage;
+  STSHJob& job = getBgJobFromInput(cmd, usage, "bg");
+  for (const auto& p : job.getProcesses()) {
+    if (p.getState() == kStopped) {
+      kill(-job.getGroupID(), SIGCONT);
+      break;
     }
   }
 }
 
 static void slay(const command& cmd) {
   const string& usage = kSlayUsage;
+  STSHProcess& process = getProcessFromInput(cmd, usage);
+  kill(process.getID(), SIGKILL);
+}
+
+static void halt(const command& cmd) {
+  const string& usage = kHaltUsage;
+  STSHProcess& process = getProcessFromInput(cmd, usage);
+  if (process.getState() == kRunning) {
+    kill(process.getID(), SIGTSTP);
+  }
+}
+
+static void cont(const command& cmd) {
+  const string& usage = kContUsage;
+  STSHProcess& process = getProcessFromInput(cmd, usage);
+  if (process.getState() == kStopped) {
+    kill(process.getID(), SIGCONT);
+  }
 }
 
 /**
@@ -100,7 +160,10 @@ static bool handleBuiltin(const pipeline& pipeline) {
   case 0:
   case 1: exit(0);
   case 2: fg(cmd); break;
+  case 3: bg(cmd); break;
   case 4: slay(cmd); break;
+  case 5: halt(cmd); break;
+  case 6: cont(cmd); break;
   case 7: cout << joblist; break;
   default: throw STSHException("Internal Error: Builtin command not supported."); // or not implemented yet
   }
