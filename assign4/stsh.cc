@@ -10,6 +10,7 @@
 #include "stsh-signal.h"
 #include "stsh-job-list.h"
 #include "stsh-job.h"
+#include "stsh-parse-utils.h"
 #include "stsh-process.h"
 #include <cstring>
 #include <iostream>
@@ -23,6 +24,15 @@
 using namespace std;
 
 static STSHJobList joblist; // the one piece of global data we need so signal handlers can access it
+static const string kFgUsage = "Usage: fg <jobid>.";
+static const string kSlayUsage = "Usage: slay <jobid> <index> | <pid>.";
+
+static size_t getArgvLen(const command& cmd) {
+  for (size_t i = 0; i < kMaxArguments + 1; i++) {
+    if (cmd.tokens[i] == NULL) return i;
+  }
+  return kMaxArguments;
+}
 
 static void updateJobList(STSHJobList& jobList, pid_t pid, STSHProcessState state) {
   if (!jobList.containsProcess(pid)) return;
@@ -32,16 +42,6 @@ static void updateJobList(STSHJobList& jobList, pid_t pid, STSHProcessState stat
   process.setState(state);
   jobList.synchronize(job);
 }
-
-/**
- * Function: handleBuiltin
- * -----------------------
- * Examines the leading command of the provided pipeline to see if
- * it's a shell builtin, and if so, handles and executes it.  handleBuiltin
- * returns true if the command is a builtin, and false otherwise.
- */
-static const string kSupportedBuiltins[] = {"quit", "exit", "fg", "bg", "slay", "halt", "cont", "jobs"};
-static const size_t kNumSupportedBuiltins = sizeof(kSupportedBuiltins)/sizeof(kSupportedBuiltins[0]);
 
 static void waitForFgJobToFinish() {
   sigset_t additions, existingmask;
@@ -54,45 +54,44 @@ static void waitForFgJobToFinish() {
   sigprocmask(SIG_UNBLOCK, &additions, NULL);
 }
 
-static void fg(const pipeline& pipeline) {
-  string usage = "Usage: fg <jobid>.";
-  command cmd = pipeline.commands[0];
-  size_t jobnum;
+static void fg(const command& cmd) {
+  const string& usage = kFgUsage;
   // input sanity check
-  if (cmd.tokens[0] == NULL || cmd.tokens[1] != NULL) {
-    throw STSHException(usage);
-  } else {
-    try {
-      string jobid = string(cmd.tokens[0]);
-      size_t endpos;
-      long long num = stoll(jobid, &endpos);
-      if (endpos != jobid.size() || num < 0) {
-        throw STSHException(usage);
-      }
-      jobnum = (size_t) num;
-    } catch (...) {
-      throw STSHException(usage);
-    }
-  }
-  // real work
+  size_t argc = getArgvLen(cmd);
+  if (argc != 1) throw STSHException(usage);
+  size_t jobnum = parseNumber(cmd.tokens[0], usage);
+
   if (!joblist.containsJob(jobnum)) {
     throw STSHException("fg " + to_string(jobnum) + ": No such job.");
   }
   STSHJob& job = joblist.getJob(jobnum);
   assert(job.getState() != kForeground);
-  bool sendSigCont = false;
-  for (auto& p : job.getProcesses()) {
+  for (const auto& p : job.getProcesses()) {
     if (p.getState() == kStopped) {
-      sendSigCont = true;
+      kill(-job.getGroupID(), SIGCONT);
+      job.setState(kForeground);
+      waitForFgJobToFinish();
+      return;
     }
   }
-  if (sendSigCont) kill(-job.getGroupID(), SIGCONT);
-  job.setState(kForeground);
-  waitForFgJobToFinish();
 }
 
+static void slay(const command& cmd) {
+  const string& usage = kSlayUsage;
+}
+
+/**
+ * Function: handleBuiltin
+ * -----------------------
+ * Examines the leading command of the provided pipeline to see if
+ * it's a shell builtin, and if so, handles and executes it.  handleBuiltin
+ * returns true if the command is a builtin, and false otherwise.
+ */
+static const string kSupportedBuiltins[] = {"quit", "exit", "fg", "bg", "slay", "halt", "cont", "jobs"};
+static const size_t kNumSupportedBuiltins = sizeof(kSupportedBuiltins)/sizeof(kSupportedBuiltins[0]);
 static bool handleBuiltin(const pipeline& pipeline) {
-  const string& command = pipeline.commands[0].command;
+  const command& cmd = pipeline.commands[0];
+  const string& command = cmd.command;
   auto iter = find(kSupportedBuiltins, kSupportedBuiltins + kNumSupportedBuiltins, command);
   if (iter == kSupportedBuiltins + kNumSupportedBuiltins) return false;
   size_t index = iter - kSupportedBuiltins;
@@ -100,7 +99,8 @@ static bool handleBuiltin(const pipeline& pipeline) {
   switch (index) {
   case 0:
   case 1: exit(0);
-  case 2: fg(pipeline); break;
+  case 2: fg(cmd); break;
+  case 4: slay(cmd); break;
   case 7: cout << joblist; break;
   default: throw STSHException("Internal Error: Builtin command not supported."); // or not implemented yet
   }
@@ -115,14 +115,14 @@ static void reapChild(int sig) {
     pid = waitpid(-1, &status, WNOHANG | WUNTRACED | WCONTINUED);
     if (pid <= 0) break;
     STSHProcessState state;
-    if (WIFEXITED(status)) {
+    if (WIFEXITED(status) || WIFSIGNALED(status)) {
       state = kTerminated;
     } else if (WIFSTOPPED(status)) {
       state = kStopped;
     } else if (WIFCONTINUED(status)) {
       state = kRunning;
     } else {
-      state = kTerminated; // TODO: more check?
+      state = kTerminated;
     }
     updateJobList(joblist, pid, state);
   }
@@ -165,13 +165,23 @@ static void createJob(const pipeline& p) {
     new_argv[0] = cmd.command;
     for (size_t i = 1; i <= kMaxArguments + 1; i++) {
       new_argv[i] = cmd.tokens[i - 1];
-      if (cmd.tokens[i - 1] == NULL) break;
+      if (new_argv[i] == NULL) break;
     }
     execvp(cmd.command, new_argv);
-    exit(1);
+    exit(1); // TODO: how to handle this?
   }
-  STSHJob& job = joblist.addJob(kForeground);
+  STSHJobState jobState = kForeground;
+  if (p.background) jobState = kBackground;
+  STSHJob& job = joblist.addJob(jobState);
   job.addProcess(STSHProcess(pid, p.commands[0]));
+  if (p.background) {
+    cout << "[" << job.getNum() << "]";
+    for (const auto& p : job.getProcesses()) {
+      cout << " " << p.getID();
+    }
+    cout << endl;
+    return;
+  }
   waitForFgJobToFinish();
 }
 
@@ -212,3 +222,4 @@ int main(int argc, char *argv[]) {
 //   }
 //   cout << jobList;
 // }
+
