@@ -189,6 +189,9 @@ static void reapChild(int sig) {
     }
     updateJobList(joblist, pid, state);
   }
+  if (!joblist.hasForegroundJob()) {
+    tcsetpgrp(STDIN_FILENO, getpgrp());
+  }
 }
 
 static void passSigToFgJob(int sig) {
@@ -231,7 +234,7 @@ static void createJob(const pipeline& p) {
       if (new_argv[i] == NULL) break;
     }
     execvp(cmd.command, new_argv);
-    exit(1); // TODO: how to handle this?
+    throw STSHException(string(cmd.command) + ": Command not found.");
   }
   STSHJobState jobState = kForeground;
   if (p.background) jobState = kBackground;
@@ -245,6 +248,7 @@ static void createJob(const pipeline& p) {
     cout << endl;
     return;
   }
+  tcsetpgrp(STDIN_FILENO, job.getGroupID());
   waitForFgJobToFinish();
 }
 
