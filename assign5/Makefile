@@ -16,10 +16,10 @@ NA_LIB_SRC = news-aggregator.cc \
 WARNINGS = -Wall -pedantic
 DEPS = -MMD -MF $(@:.o=.d)
 DEFINES = -D_GLIBCXX_USE_NANOSLEEP -D_GLIBCXX_USE_SCHED_YIELD
-INCLUDES = -I/afs/ir/class/cs110/local/include -I/usr/include/libxml2
+INCLUDES = -I../extra/include -I/usr/include/libxml2
 
 CXXFLAGS = -g $(WARNINGS) -O0 -std=c++0x $(DEPS) $(DEFINES) $(INCLUDES)
-LDFLAGS = -lm -lxml2 -L/afs/ir/class/cs110/local/lib -lrand -lthreads -pthread
+LDFLAGS = -lm -lxml2 -L../extra/lib -lrand -lthreads -pthread
 
 NA_LIB_OBJ = $(patsubst %.cc,%.o,$(patsubst %.S,%.o,$(NA_LIB_SRC)))
 NA_LIB_DEP = $(patsubst %.o,%.d,$(NA_LIB_OBJ))
