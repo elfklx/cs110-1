@@ -30,6 +30,11 @@ static const string kSlayUsage = "Usage: slay <jobid> <index> | <pid>.";
 static const string kHaltUsage = "Usage: halt <jobid> <index> | <pid>.";
 static const string kContUsage = "Usage: cont <jobid> <index> | <pid>.";
 
+/**
+ * Function: getArgvLen
+ * -------------------
+ * Gets cmd.tokens valid length.
+ */
 static size_t getArgvLen(const command& cmd) {
   for (size_t i = 0; i < kMaxArguments + 1; i++) {
     if (cmd.tokens[i] == NULL) return i;
@@ -37,6 +42,11 @@ static size_t getArgvLen(const command& cmd) {
   return kMaxArguments;
 }
 
+/**
+ * Function: updateJobList
+ * -------------------
+ * Updates the joblist for given pid and state.
+ */
 static void updateJobList(STSHJobList& jobList, pid_t pid, STSHProcessState state) {
   if (!jobList.containsProcess(pid)) return;
   STSHJob& job = jobList.getJobWithProcess(pid);
@@ -46,6 +56,11 @@ static void updateJobList(STSHJobList& jobList, pid_t pid, STSHProcessState stat
   jobList.synchronize(job);
 }
 
+/**
+ * Function: waitForFgJobToFinish
+ * -------------------
+ * Makes main process hang for foreground job to finish.
+ */
 static void waitForFgJobToFinish() {
   sigset_t additions, existingmask;
   sigemptyset(&additions);
@@ -57,6 +72,11 @@ static void waitForFgJobToFinish() {
   sigprocmask(SIG_UNBLOCK, &additions, NULL);
 }
 
+/**
+ * Function: getProcessFromInput
+ * -------------------
+ * Gets the process from input.
+ */
 static STSHProcess& getProcessFromInput(const command& cmd, const string& usage) {
   size_t argc = getArgvLen(cmd);
   if (argc < 1 || argc > 2) throw STSHException(usage);
@@ -82,6 +102,11 @@ static STSHProcess& getProcessFromInput(const command& cmd, const string& usage)
   return joblist.getJobWithProcess(pid).getProcess(pid);
 }
 
+/**
+ * Function: getBgJobFromInput
+ * -------------------
+ * Gets the background job from input.
+ */
 static STSHJob& getBgJobFromInput(const command& cmd, const string& usage, const string& caller) {
   size_t argc = getArgvLen(cmd);
   if (argc != 1) throw STSHException(usage);
@@ -94,6 +119,11 @@ static STSHJob& getBgJobFromInput(const command& cmd, const string& usage, const
   return job;
 }
 
+/**
+ * Function: fg
+ * -------------------
+ * Builtin handler for fg.
+ */
 static void fg(const command& cmd) {
   const string& usage = kFgUsage;
   STSHJob& job = getBgJobFromInput(cmd, usage, "fg");
@@ -107,6 +137,11 @@ static void fg(const command& cmd) {
   waitForFgJobToFinish();
 }
 
+/**
+ * Function: bg
+ * -------------------
+ * Builtin handler for bg.
+ */
 static void bg(const command& cmd) {
   const string& usage = kBgUsage;
   STSHJob& job = getBgJobFromInput(cmd, usage, "bg");
@@ -118,12 +153,22 @@ static void bg(const command& cmd) {
   }
 }
 
+/**
+ * Function: slay
+ * -------------------
+ * Builtin handler for slay.
+ */
 static void slay(const command& cmd) {
   const string& usage = kSlayUsage;
   STSHProcess& process = getProcessFromInput(cmd, usage);
   kill(process.getID(), SIGKILL);
 }
 
+/**
+ * Function: slay
+ * -------------------
+ * Builtin handler for slay.
+ */
 static void halt(const command& cmd) {
   const string& usage = kHaltUsage;
   STSHProcess& process = getProcessFromInput(cmd, usage);
@@ -132,6 +177,11 @@ static void halt(const command& cmd) {
   }
 }
 
+/**
+ * Function: cont
+ * -------------------
+ * Builtin handler for cont.
+ */
 static void cont(const command& cmd) {
   const string& usage = kContUsage;
   STSHProcess& process = getProcessFromInput(cmd, usage);
@@ -167,33 +217,42 @@ static bool handleBuiltin(const pipeline& pipeline) {
   case 7: cout << joblist; break;
   default: throw STSHException("Internal Error: Builtin command not supported."); // or not implemented yet
   }
-  
+
   return true;
 }
 
+/**
+ * Function: reapChild
+ * -------------------
+ * Signal handler for SIGCHLD.
+ */
 static void reapChild(int sig) {
   pid_t pid;
   while (true) {
     int status;
     pid = waitpid(-1, &status, WNOHANG | WUNTRACED | WCONTINUED);
     if (pid <= 0) break;
-    STSHProcessState state;
+    STSHProcessState state = kTerminated;
     if (WIFEXITED(status) || WIFSIGNALED(status)) {
       state = kTerminated;
     } else if (WIFSTOPPED(status)) {
       state = kStopped;
     } else if (WIFCONTINUED(status)) {
       state = kRunning;
-    } else {
-      state = kTerminated;
     }
     updateJobList(joblist, pid, state);
   }
+  // give stdin control back to shell
   if (!joblist.hasForegroundJob()) {
     tcsetpgrp(STDIN_FILENO, getpgrp());
   }
 }
 
+/**
+ * Function: passSigToFgJob
+ * -------------------
+ * Passes the signal to the foreground job.
+ */
 static void passSigToFgJob(int sig) {
   if (joblist.hasForegroundJob()) {
     kill(-joblist.getForegroundJob().getGroupID(), sig);
@@ -204,8 +263,8 @@ static void passSigToFgJob(int sig) {
  * Function: installSignalHandlers
  * -------------------------------
  * Installs user-defined signals handlers for four signals
- * (once you've implemented signal handlers for SIGCHLD, 
- * SIGINT, and SIGTSTP, you'll add more installSignalHandler calls) and 
+ * (once you've implemented signal handlers for SIGCHLD,
+ * SIGINT, and SIGTSTP, you'll add more installSignalHandler calls) and
  * ignores two others.
  */
 static void installSignalHandlers() {
@@ -218,17 +277,40 @@ static void installSignalHandlers() {
 }
 
 /**
- * Function: createJob
+ * Function: createProcess
  * -------------------
- * Creates a new job on behalf of the provided pipeline.
+ * Creates a new process on behalf of the provided pipeline and
+ * command id, add the process to the given job.
  */
-static void createJob(const pipeline& p) {
+static void createProcess(STSHJob& job, const pipeline& p, size_t cmdid, int fds[]) {
+  const command& cmd = p.commands[cmdid];
+  size_t numCommands = p.commands.size();
+  bool first = cmdid == 0;
+  bool last = cmdid == (numCommands - 1);
   pid_t pid = fork();
   if (pid == 0) {
-    assert(setpgid(0, 0) == 0);
-    command cmd = p.commands[0];
+    setpgid(0, job.getGroupID());
+    // close unrelated fds
+    for (size_t i = 0; i < (numCommands + 1) * 2; i++) {
+      if (!(i >= cmdid * 2 && i < (cmdid + 2) * 2)) close(fds[i]);
+    }
+    // close related fds
+    close(fds[cmdid * 2 + 2]); // don't read from next process
+    close(fds[cmdid * 2 + 1]); // don't write to previous process
+    if (!first || !p.input.empty()) {
+      dup2(fds[cmdid * 2], 0); // redirect stdin to the previous fd_read
+      close(fds[cmdid * 2]);
+    } else {
+      close(fds[0]);
+    }
+    if (!last || !p.output.empty()) {
+      dup2(fds[cmdid * 2 + 3], 1); // redirect stdout to the next fd_write
+      close(fds[cmdid * 2 + 3]);
+    } else {
+      close(fds[numCommands * 2 + 1]);
+    }
     char *new_argv[kMaxArguments + 1 + 1];
-    new_argv[0] = cmd.command;
+    new_argv[0] = (char *) cmd.command;
     for (size_t i = 1; i <= kMaxArguments + 1; i++) {
       new_argv[i] = cmd.tokens[i - 1];
       if (new_argv[i] == NULL) break;
@@ -236,10 +318,81 @@ static void createJob(const pipeline& p) {
     execvp(cmd.command, new_argv);
     throw STSHException(string(cmd.command) + ": Command not found.");
   }
+  job.addProcess(STSHProcess(pid, cmd));
+}
+
+/**
+ * Function: inputToOutput
+ * -------------------
+ * Copies content from input to output.
+ */
+static void inputToOutput(const pipeline& p, int infd, int outfd) {
+  if (!p.input.empty()) infd = open(p.input.c_str(), O_RDONLY);
+  if (infd == -1) {
+    close(outfd);
+    throw STSHException("Could not open \"" + p.input + "\".");
+  }
+  if (!p.output.empty()) outfd = open(p.output.c_str(), O_WRONLY | O_TRUNC | O_CREAT, 0644);
+  if (outfd == -1) {
+    close(infd);
+    throw STSHException("Could not open \"" + p.output + "\".");
+  }
+  while (true) {
+    char buffer[1024];
+    ssize_t numRead = read(infd, buffer, 1024);
+    if (numRead == 0) break;
+    else if (numRead < 0) {
+      close(infd); close(outfd);
+      throw STSHException("Error calling read.");
+    }
+    ssize_t numWritten = 0;
+    while (numWritten < numRead) {
+      ssize_t count = write(outfd, buffer + numWritten, numRead - numWritten);
+      if (count < 0) {
+        close(infd); close(outfd);
+        throw STSHException("Error calling write.");
+      }
+      numWritten += count;
+    }
+  }
+  close(infd);
+  close(outfd);
+}
+
+/**
+ * Function: createJob
+ * -------------------
+ * Creates a new job on behalf of the provided pipeline.
+ */
+static void createJob(const pipeline& p) {
   STSHJobState jobState = kForeground;
   if (p.background) jobState = kBackground;
   STSHJob& job = joblist.addJob(jobState);
-  job.addProcess(STSHProcess(pid, p.commands[0]));
+  const vector<command>& commands = p.commands;
+  size_t numCommands = commands.size();
+  // create numCommands + 1 pipes. 1 for redirect input,
+  // 1 for redirect output, and numCommands - 1 for inter-process
+  // communication
+  int fds[(numCommands + 1) * 2];
+  for (size_t i = 0; i < numCommands + 1; i++) {
+    pipe(fds + i * 2);
+  }
+  // create processes
+  for (size_t i = 0; i < numCommands; i++) {
+    createProcess(job, p, i, fds);
+  }
+  // close all inter-process pipes since they are not needed by parent
+  for (size_t i = 2; i < numCommands * 2; i++) {
+    close(fds[i]);
+  }
+  // input output redirection
+  close(fds[0]);
+  close(fds[numCommands * 2 + 1]);
+  if (p.input.empty()) close(fds[1]);
+  else inputToOutput(p, -1, fds[1]);
+  if (p.output.empty()) close(fds[numCommands * 2]);
+  else inputToOutput(p, fds[numCommands * 2], -1);
+  // handle background job
   if (p.background) {
     cout << "[" << job.getNum() << "]";
     for (const auto& p : job.getProcesses()) {
@@ -248,6 +401,7 @@ static void createJob(const pipeline& p) {
     cout << endl;
     return;
   }
+  // give stdin control to foreground process group
   tcsetpgrp(STDIN_FILENO, job.getGroupID());
   waitForFgJobToFinish();
 }
@@ -257,7 +411,7 @@ static void createJob(const pipeline& p) {
  * --------------
  * Defines the entry point for a process running stsh.
  * The main function is little more than a read-eval-print
- * loop (i.e. a repl).  
+ * loop (i.e. a repl).
  */
 int main(int argc, char *argv[]) {
   pid_t stshpid = getpid();
@@ -279,14 +433,3 @@ int main(int argc, char *argv[]) {
 
   return 0;
 }
-
-// static void addToJobList(STSHJobList& jobList, const vector<pair<pid_t, string>>& children) {
-//   STSHJob& job = jobList.addJob(kBackground);
-//   for (const pair<string, pid_t>& child: children) {
-//     pid_t pid = child.first;
-//     const string& command = child.second;
-//     job.addProcess(STSHProcess(pid, command)); // third argument defaults to kRunning
-//   }
-//   cout << jobList;
-// }
-
