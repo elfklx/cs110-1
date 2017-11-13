@@ -47,13 +47,13 @@ static size_t getArgvLen(const command& cmd) {
  * -------------------
  * Updates the joblist for given pid and state.
  */
-static void updateJobList(STSHJobList& jobList, pid_t pid, STSHProcessState state) {
-  if (!jobList.containsProcess(pid)) return;
-  STSHJob& job = jobList.getJobWithProcess(pid);
+static void updateJobList(pid_t pid, STSHProcessState state) {
+  if (!joblist.containsProcess(pid)) return;
+  STSHJob& job = joblist.getJobWithProcess(pid);
   assert(job.containsProcess(pid));
   STSHProcess& process = job.getProcess(pid);
   process.setState(state);
-  jobList.synchronize(job);
+  joblist.synchronize(job);
 }
 
 /**
@@ -240,7 +240,7 @@ static void reapChild(int sig) {
     } else if (WIFCONTINUED(status)) {
       state = kRunning;
     }
-    updateJobList(joblist, pid, state);
+    updateJobList(pid, state);
   }
   // give stdin control back to shell
   if (!joblist.hasForegroundJob()) {
@@ -318,6 +318,8 @@ static void createProcess(STSHJob& job, const pipeline& p, size_t cmdid, int fds
     execvp(cmd.command, new_argv);
     throw STSHException(string(cmd.command) + ": Command not found.");
   }
+  // ensure the process group exists before adding the second process
+  if (first) setpgid(pid, pid);
   job.addProcess(STSHProcess(pid, cmd));
 }
 
