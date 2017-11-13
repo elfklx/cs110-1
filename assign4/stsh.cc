@@ -282,32 +282,38 @@ static void installSignalHandlers() {
  * Creates a new process on behalf of the provided pipeline and
  * command id, add the process to the given job.
  */
-static void createProcess(STSHJob& job, const pipeline& p, size_t cmdid, int fds[]) {
+static void createProcess(STSHJob& job, const pipeline& p, int cmdid, int fds[]) {
   const command& cmd = p.commands[cmdid];
-  size_t numCommands = p.commands.size();
+  int numCommands = p.commands.size();
   bool first = cmdid == 0;
   bool last = cmdid == (numCommands - 1);
   pid_t pid = fork();
   if (pid == 0) {
     setpgid(0, job.getGroupID());
     // close unrelated fds
-    for (size_t i = 0; i < (numCommands + 1) * 2; i++) {
-      if (!(i >= cmdid * 2 && i < (cmdid + 2) * 2)) close(fds[i]);
+    for (int i = 0; i < (numCommands - 1) * 2; i++) {
+      if (!(i >= (cmdid-1)*2 && i < (cmdid+1)*2)) close(fds[i]);
     }
     // close related fds
-    close(fds[cmdid * 2 + 2]); // don't read from next process
-    close(fds[cmdid * 2 + 1]); // don't write to previous process
-    if (!first || !p.input.empty()) {
-      dup2(fds[cmdid * 2], 0); // redirect stdin to the previous fd_read
-      close(fds[cmdid * 2]);
-    } else {
-      close(fds[0]);
+    if (!first) {
+      close(fds[cmdid * 2 - 1]); // don't write to previous process
+      dup2(fds[(cmdid-1) * 2], 0); // redirect stdin to the previous fd_read
+      close(fds[(cmdid-1) * 2]);
+    } else if (!p.input.empty()) {
+      int infd = open(p.input.c_str(), O_RDONLY);
+      if (infd == -1) throw STSHException("Could not open \"" + p.input + "\".");
+      dup2(infd, 0); // redirect stdin to infd
+      close(infd);
     }
-    if (!last || !p.output.empty()) {
-      dup2(fds[cmdid * 2 + 3], 1); // redirect stdout to the next fd_write
-      close(fds[cmdid * 2 + 3]);
-    } else {
-      close(fds[numCommands * 2 + 1]);
+    if (!last) {
+      close(fds[cmdid * 2]); // don't read from next process
+      dup2(fds[cmdid * 2 + 1], 1); // redirect stdout to the next fd_write
+      close(fds[cmdid * 2 + 1]);
+    } else if (!p.output.empty()) {
+      int outfd = open(p.output.c_str(), O_WRONLY | O_TRUNC | O_CREAT, 0644);
+      if (outfd == -1) throw STSHException("Could not open \"" + p.output + "\".");
+      dup2(outfd, 1); // redirect stdout to outfd
+      close(outfd);
     }
     char *new_argv[kMaxArguments + 1 + 1];
     new_argv[0] = (char *) cmd.command;
@@ -324,44 +330,6 @@ static void createProcess(STSHJob& job, const pipeline& p, size_t cmdid, int fds
 }
 
 /**
- * Function: inputToOutput
- * -------------------
- * Copies content from input to output.
- */
-static void inputToOutput(const pipeline& p, int infd, int outfd) {
-  if (infd < 0 && !p.input.empty()) infd = open(p.input.c_str(), O_RDONLY);
-  if (infd == -1) {
-    close(outfd);
-    throw STSHException("Could not open \"" + p.input + "\".");
-  }
-  if (outfd < 0 && !p.output.empty()) outfd = open(p.output.c_str(), O_WRONLY | O_TRUNC | O_CREAT, 0644);
-  if (outfd == -1) {
-    close(infd);
-    throw STSHException("Could not open \"" + p.output + "\".");
-  }
-  while (true) {
-    char buffer[1024];
-    ssize_t numRead = read(infd, buffer, 1024);
-    if (numRead == 0) break;
-    else if (numRead < 0) {
-      close(infd); close(outfd);
-      throw STSHException("Error calling read.");
-    }
-    ssize_t numWritten = 0;
-    while (numWritten < numRead) {
-      ssize_t count = write(outfd, buffer + numWritten, numRead - numWritten);
-      if (count < 0) {
-        close(infd); close(outfd);
-        throw STSHException("Error calling write.");
-      }
-      numWritten += count;
-    }
-  }
-  close(infd);
-  close(outfd);
-}
-
-/**
  * Function: createJob
  * -------------------
  * Creates a new job on behalf of the provided pipeline.
@@ -372,11 +340,9 @@ static void createJob(const pipeline& p) {
   STSHJob& job = joblist.addJob(jobState);
   const vector<command>& commands = p.commands;
   size_t numCommands = commands.size();
-  // create numCommands + 1 pipes. 1 for redirect input,
-  // 1 for redirect output, and numCommands - 1 for inter-process
-  // communication
-  int fds[(numCommands + 1) * 2];
-  for (size_t i = 0; i < numCommands + 1; i++) {
+  // create numCommands - 1 pipes for inter-process communication
+  int fds[(numCommands - 1) * 2];
+  for (size_t i = 0; i < numCommands - 1; i++) {
     pipe(fds + i * 2);
   }
   // create processes
@@ -384,16 +350,9 @@ static void createJob(const pipeline& p) {
     createProcess(job, p, i, fds);
   }
   // close all inter-process pipes since they are not needed by parent
-  for (size_t i = 2; i < numCommands * 2; i++) {
+  for (size_t i = 0; i < (numCommands - 1) * 2; i++) {
     close(fds[i]);
   }
-  // input output redirection
-  close(fds[0]);
-  close(fds[numCommands * 2 + 1]);
-  if (p.input.empty()) close(fds[1]);
-  else inputToOutput(p, -1, fds[1]);
-  if (p.output.empty()) close(fds[numCommands * 2]);
-  else inputToOutput(p, fds[numCommands * 2], -1);
   // handle background job
   if (p.background) {
     cout << "[" << job.getNum() << "]";
