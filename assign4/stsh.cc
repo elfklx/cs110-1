@@ -329,12 +329,12 @@ static void createProcess(STSHJob& job, const pipeline& p, size_t cmdid, int fds
  * Copies content from input to output.
  */
 static void inputToOutput(const pipeline& p, int infd, int outfd) {
-  if (!p.input.empty()) infd = open(p.input.c_str(), O_RDONLY);
+  if (infd < 0 && !p.input.empty()) infd = open(p.input.c_str(), O_RDONLY);
   if (infd == -1) {
     close(outfd);
     throw STSHException("Could not open \"" + p.input + "\".");
   }
-  if (!p.output.empty()) outfd = open(p.output.c_str(), O_WRONLY | O_TRUNC | O_CREAT, 0644);
+  if (outfd < 0 && !p.output.empty()) outfd = open(p.output.c_str(), O_WRONLY | O_TRUNC | O_CREAT, 0644);
   if (outfd == -1) {
     close(infd);
     throw STSHException("Could not open \"" + p.output + "\".");
