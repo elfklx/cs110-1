@@ -9,7 +9,7 @@ LIB_SRC = stsh-signal.cc stsh-job-list.cc stsh-job.cc stsh-process.cc stsh-parse
 WARNINGS = -Wall -pedantic -Wno-unused-function -Wno-vla
 DEPS = -MMD -MF $(@:.o=.d)
 DEFINES = 
-INCLUDES = -I/afs/ir/class/cs110/local/include
+INCLUDES = -I../extra/include
 
 CXXFLAGS = -g $(WARNINGS) -O0 -std=c++0x $(DEFINES) $(INCLUDES)
 LDFLAGS = -lreadline -ll
