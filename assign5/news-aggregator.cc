@@ -160,6 +160,8 @@ void NewsAggregator::processAllFeeds() {
   }
   const map<url, title>& rssFeeds = rssFeedList.getFeeds();
   set<url> visitedUrls;
+  map<title, vector<string>> articleTokens;
+  map<title, Article> articleMap;
   for (const pair<url, title>& entry : rssFeeds) {
     url feedUrl = entry.first;
     title feedTitle = entry.second;
@@ -174,8 +176,9 @@ void NewsAggregator::processAllFeeds() {
     log.noteSingleFeedDownloadEnd(feedUrl);
     const vector<Article>& articles = rssFeed.getArticles();
     for (const Article& article : articles) {
-      if (visitedUrls.count(article.url) != 0) {
+      if (visitedUrls.find(article.url) != visitedUrls.end()) {
         log.noteSingleArticleDownloadSkipped(article);
+        continue;
       }
       visitedUrls.insert(article.url);
       HTMLDocument htmlDoc(article.url);
@@ -187,9 +190,23 @@ void NewsAggregator::processAllFeeds() {
         continue;
       }
       const vector<string>& tokens = htmlDoc.getTokens();
-      index.add(article, tokens);
+      vector<string> tokensCopy = tokens;
+      sort(tokensCopy.begin(), tokensCopy.end());
+      if (articleMap.find(article.title) != articleMap.end()) {
+        const vector<string>& tks = articleTokens[article.title];
+        vector<string> tokensIntersection;
+        set_intersection(tks.cbegin(), tks.cend(), tokensCopy.cbegin(),
+          tokensCopy.cend(), back_inserter(tokensIntersection));
+        articleTokens[article.title] = tokensIntersection;
+      } else {
+        articleMap[article.title] = article;
+        articleTokens[article.title] = tokensCopy;
+      }
     }
     // log.noteAllArticlesHaveBeenScheduled(feedTitle);
   }
   // log.noteAllRSSFeedsDownloadEnd();
+  for (const auto& entry : articleTokens) {
+    index.add(articleMap[entry.first], entry.second);
+  }
 }
