@@ -10,6 +10,7 @@
 #include <getopt.h>
 #include <libxml/parser.h>
 #include <libxml/catalog.h>
+#include <set>
 // you will almost certainly need to add more system header includes
 
 // I'm not giving away too much detail here by leaking the #includes below,
@@ -141,7 +142,7 @@ NewsAggregator::NewsAggregator(const string& rssFeedListURI, bool verbose):
  * Private Method: processAllFeeds
  * -------------------------------
  * Downloads and parses the encapsulated RSSFeedList, which itself
- * leads to RSSFeeds, which themsleves lead to HTMLDocuemnts, which
+ * leads to RSSFeeds, which themsleves lead to HTMLDocuments, which
  * can be collectively parsed for their tokens to build a huge RSSIndex.
  * 
  * The vast majority of your Assignment 5 work has you implement this
@@ -149,4 +150,46 @@ NewsAggregator::NewsAggregator(const string& rssFeedListURI, bool verbose):
  * outlined in the spec.
  */
 
-void NewsAggregator::processAllFeeds() {}
+void NewsAggregator::processAllFeeds() {
+  RSSFeedList rssFeedList(rssFeedListURI);
+  try {
+    rssFeedList.parse();
+  } catch (const RSSFeedListException& rfle) {
+    log.noteFullRSSFeedListDownloadFailureAndExit(rssFeedListURI);
+    return;
+  }
+  const map<url, title>& rssFeeds = rssFeedList.getFeeds();
+  set<url> visitedUrls;
+  for (const pair<url, title>& entry : rssFeeds) {
+    url feedUrl = entry.first;
+    title feedTitle = entry.second;
+    RSSFeed rssFeed(feedUrl);
+    log.noteSingleFeedDownloadBeginning(feedUrl);
+    try {
+      rssFeed.parse();
+    } catch (const RSSFeedException& rfe) {
+      log.noteSingleFeedDownloadFailure(feedUrl);
+      continue;
+    }
+    log.noteSingleFeedDownloadEnd(feedUrl);
+    const vector<Article>& articles = rssFeed.getArticles();
+    for (const Article& article : articles) {
+      if (visitedUrls.count(article.url) != 0) {
+        log.noteSingleArticleDownloadSkipped(article);
+      }
+      visitedUrls.insert(article.url);
+      HTMLDocument htmlDoc(article.url);
+      log.noteSingleArticleDownloadBeginning(article);
+      try {
+        htmlDoc.parse();
+      } catch (const HTMLDocumentException& hde) {
+        log.noteSingleArticleDownloadFailure(article);
+        continue;
+      }
+      const vector<string>& tokens = htmlDoc.getTokens();
+      index.add(article, tokens);
+    }
+    // log.noteAllArticlesHaveBeenScheduled(feedTitle);
+  }
+  // log.noteAllRSSFeedsDownloadEnd();
+}
