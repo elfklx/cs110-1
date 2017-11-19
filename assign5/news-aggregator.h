@@ -9,6 +9,10 @@
 
 #pragma once
 #include <string>
+#include <thread>
+#include <mutex>
+#include <semaphore.h>
+#include <set>
 #include "log.h"
 #include "rss-index.h"
 
@@ -60,6 +64,13 @@ class NewsAggregator {
   std::string rssFeedListURI;
   RSSIndex index;
   bool built;
+  semaphore numFeedAllowed;
+  semaphore numArticleAllowed;
+  std::set<url> visitedUrls;
+  std::map<std::pair<title, server>, std::vector<std::string>> articleTokens;
+  std::map<std::pair<title, server>, Article> articleMap;
+  std::mutex mVisitedUrls;
+  std::mutex mArticleData;
   
 /**
  * Constructor: NewsAggregator
@@ -76,6 +87,20 @@ class NewsAggregator {
  * You need to implement this function.
  */
   void processAllFeeds();
+
+/**
+ * Method: feedThread
+ * -------------------------------
+ * Thread routine for feed.
+ */
+  void feedThread(const std::pair<url, title>& feed);
+
+/**
+ * Method: articleThread
+ * -------------------------------
+ * Thread routine for article.
+ */
+  void articleThread(const Article& article);
 
 /**
  * Copy Constructor, Assignment Operator
