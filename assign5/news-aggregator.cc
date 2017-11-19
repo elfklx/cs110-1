@@ -11,10 +11,7 @@
 #include <libxml/parser.h>
 #include <libxml/catalog.h>
 #include <set>
-// you will almost certainly need to add more system header includes
-
-// I'm not giving away too much detail here by leaking the #includes below,
-// which contribute to the official CS110 staff solution.
+#include <memory>
 #include "rss-feed.h"
 #include "rss-feed-list.h"
 #include "html-document.h"
@@ -136,8 +133,8 @@ void NewsAggregator::queryIndex() const {
  * of the class definition.
  */
 NewsAggregator::NewsAggregator(const string& rssFeedListURI, bool verbose): 
-  log(verbose), rssFeedListURI(rssFeedListURI), built(false), numFeedAllowed(5),
-  numArticleAllowed(18) {}
+  log(verbose), rssFeedListURI(rssFeedListURI), built(false),
+  numFeedAllowed(kNumThreadFeedTotal), numArticleAllowed(kNumThreadArticleTotal) {}
 
 /**
  * Private Method: articleThread
@@ -155,16 +152,26 @@ void NewsAggregator::articleThread(const Article& article) {
   mVisitedUrls.unlock();
   HTMLDocument htmlDoc(article.url);
   log.noteSingleArticleDownloadBeginning(article);
+  server articleServer = getURLServer(article.url);
+  mServerSemaphoreMap.lock();
+  unique_ptr<semaphore>& s = serverSemaphoreMap[articleServer];
+  if (s == nullptr) {
+    s.reset(new semaphore(kNumThreadPerServer));
+  }
+  mServerSemaphoreMap.unlock();
+  s->wait();
   try {
     htmlDoc.parse();
   } catch (const HTMLDocumentException& hde) {
+    s->signal();
     log.noteSingleArticleDownloadFailure(article);
     return;
   }
+  s->signal();
   const vector<string>& tokens = htmlDoc.getTokens();
   vector<string> tokensCopy = tokens;
   sort(tokensCopy.begin(), tokensCopy.end());
-  pair<title, server> ats = pair<title, server>(article.title, getURLServer(article.url));
+  ArticleKey ats = ArticleKey(article.title, articleServer);
   lock_guard<mutex> lg2(mArticleData);
   if (articleMap.find(ats) != articleMap.end()) {
     const vector<string>& tks = articleTokens[ats];
@@ -233,5 +240,8 @@ void NewsAggregator::processAllFeeds() {
   for (thread& t : feedThreads) t.join();
   for (const auto& entry : articleTokens) {
     index.add(articleMap[entry.first], entry.second);
+  }
+  for (auto& entry: serverSemaphoreMap) {
+    entry.second.reset();
   }
 }

@@ -59,6 +59,7 @@ class NewsAggregator {
   typedef std::string url;
   typedef std::string server;
   typedef std::string title;
+  typedef std::pair<title, server> ArticleKey;
   
   NewsAggregatorLog log;
   std::string rssFeedListURI;
@@ -67,11 +68,17 @@ class NewsAggregator {
   semaphore numFeedAllowed;
   semaphore numArticleAllowed;
   std::set<url> visitedUrls;
-  std::map<std::pair<title, server>, std::vector<std::string>> articleTokens;
-  std::map<std::pair<title, server>, Article> articleMap;
+  std::map<ArticleKey, std::vector<std::string>> articleTokens;
+  std::map<ArticleKey, Article> articleMap;
   std::mutex mVisitedUrls;
   std::mutex mArticleData;
+  std::map<server, std::unique_ptr<semaphore>> serverSemaphoreMap;
+  std::mutex mServerSemaphoreMap;
   
+  static const int kNumThreadPerServer = 8;
+  static const int kNumThreadArticleTotal = 8;
+  static const int kNumThreadFeedTotal = 5;
+
 /**
  * Constructor: NewsAggregator
  * ---------------------------
