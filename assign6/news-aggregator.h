@@ -8,6 +8,8 @@
 
 #pragma once
 #include <string>
+#include <set>
+#include <mutex>
 #include "log.h"
 #include "rss-index.h"
 #include "thread-pool.h"
@@ -55,12 +57,23 @@ class NewsAggregator {
   typedef std::string url;
   typedef std::string server;
   typedef std::string title;
+  typedef std::pair<title, server> ArticleKey;
   
   NewsAggregatorLog log;
   std::string rssFeedListURI;
   RSSIndex index;
   bool built;
-  
+  ThreadPool feedWorkerPool;
+  ThreadPool articleWorkerPool;
+  std::set<url> visitedUrls;
+  std::mutex mVisitedUrls;
+  std::map<ArticleKey, std::vector<std::string>> articleTokens;
+  std::map<ArticleKey, Article> articleMap;
+  std::mutex mArticleData;
+
+  static const int kNumThreadFeedTotal = 3;
+  static const int kNumThreadArticleTotal = 20;
+
 /**
  * Constructor: NewsAggregator
  * ---------------------------
@@ -77,6 +90,20 @@ class NewsAggregator {
  * of an unbounded number of threads.
  */
   void processAllFeeds();
+
+/**
+ * Method: feedThread
+ * -------------------------------
+ * Thread routine for feed.
+ */
+  void feedThread(const std::pair<url, title>& feed);
+
+/**
+ * Method: articleThread
+ * -------------------------------
+ * Thread routine for article.
+ */
+  void articleThread(const Article& article);
 
 /**
  * Copy Constructor, Assignment Operator
