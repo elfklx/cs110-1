@@ -10,10 +10,7 @@
 #include <getopt.h>
 #include <libxml/parser.h>
 #include <libxml/catalog.h>
-// you will almost certainly need to add more system header includes
-
-// I'm not giving away too much detail here by leaking the #includes below,
-// which contribute to the official CS110 staff solution.
+#include <set>
 #include "rss-feed.h"
 #include "rss-feed-list.h"
 #include "html-document.h"
@@ -135,18 +132,97 @@ void NewsAggregator::queryIndex() const {
  * of the class definition.
  */
 NewsAggregator::NewsAggregator(const string& rssFeedListURI, bool verbose): 
-  log(verbose), rssFeedListURI(rssFeedListURI), built(false) {}
+  log(verbose), rssFeedListURI(rssFeedListURI), built(false),
+  feedWorkerPool(kNumThreadFeedTotal), articleWorkerPool(kNumThreadArticleTotal) {}
+
+/**
+ * Private Method: articleThread
+ * -------------------------------
+ * Thread routine for article.
+ */
+void NewsAggregator::articleThread(const Article& article) {
+  lock_guard<mutex> lg1(mVisitedUrls);
+  if (visitedUrls.find(article.url) != visitedUrls.end()) {
+    log.noteSingleArticleDownloadSkipped(article);
+    return;
+  }
+  visitedUrls.insert(article.url);
+  mVisitedUrls.unlock();
+  HTMLDocument htmlDoc(article.url);
+  log.noteSingleArticleDownloadBeginning(article);
+  try {
+    htmlDoc.parse();
+  } catch (const HTMLDocumentException& hde) {
+    log.noteSingleArticleDownloadFailure(article);
+    return;
+  }
+  const vector<string>& tokens = htmlDoc.getTokens();
+  vector<string> tokensCopy = tokens;
+  sort(tokensCopy.begin(), tokensCopy.end());
+  server articleServer = getURLServer(article.url);
+  ArticleKey ats = ArticleKey(article.title, articleServer);
+  lock_guard<mutex> lg2(mArticleData);
+  if (articleMap.find(ats) != articleMap.end()) {
+    const vector<string>& tks = articleTokens[ats];
+    vector<string> tokensIntersection;
+    set_intersection(tks.cbegin(), tks.cend(), tokensCopy.cbegin(),
+      tokensCopy.cend(), back_inserter(tokensIntersection));
+    articleTokens[ats] = tokensIntersection;
+  } else {
+    articleMap[ats] = article;
+    articleTokens[ats] = tokensCopy;
+  }
+}
+
+/**
+ * Private Method: feedThread
+ * -------------------------------
+ * Thread routine for feed.
+ */
+void NewsAggregator::feedThread(const pair<url, title>& feed) {
+  url feedUrl = feed.first;
+  title feedTitle = feed.second;
+  RSSFeed rssFeed(feedUrl);
+  log.noteSingleFeedDownloadBeginning(feedUrl);
+  try {
+    rssFeed.parse();
+  } catch (const RSSFeedException& rfe) {
+    log.noteSingleFeedDownloadFailure(feedUrl);
+    return;
+  }
+  log.noteSingleFeedDownloadEnd(feedUrl);
+  const vector<Article>& articles = rssFeed.getArticles();
+  for (const Article& article : articles) {
+    articleWorkerPool.schedule([this, article] { articleThread(article); });
+  }
+}
 
 /**
  * Private Method: processAllFeeds
  * -------------------------------
  * Downloads and parses the encapsulated RSSFeedList, which itself
- * leads to RSSFeeds, which themsleves lead to HTMLDocuemnts, which
+ * leads to RSSFeeds, which themsleves lead to HTMLDocuments, which
  * can be collectively parsed for their tokens to build a huge RSSIndex.
  * 
  * The vast majority of your Assignment 5 work has you implement this
  * method using multithreading while respecting the imposed constraints
  * outlined in the spec.
  */
-
-void NewsAggregator::processAllFeeds() {}
+void NewsAggregator::processAllFeeds() {
+  RSSFeedList rssFeedList(rssFeedListURI);
+  try {
+    rssFeedList.parse();
+  } catch (const RSSFeedListException& rfle) {
+    log.noteFullRSSFeedListDownloadFailureAndExit(rssFeedListURI);
+    return;
+  }
+  const map<url, title>& rssFeeds = rssFeedList.getFeeds();
+  for (const pair<url, title>& feed : rssFeeds) {
+    feedWorkerPool.schedule([this, feed] { feedThread(feed); });
+  }
+  feedWorkerPool.wait();
+  articleWorkerPool.wait();
+  for (const auto& entry : articleTokens) {
+    index.add(articleMap[entry.first], entry.second);
+  }
+}

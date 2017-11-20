@@ -76,7 +76,7 @@ class NewsAggregator {
   std::mutex mServerSemaphoreMap;
   
   static const int kNumThreadPerServer = 8;
-  static const int kNumThreadArticleTotal = 8;
+  static const int kNumThreadArticleTotal = 18;
   static const int kNumThreadFeedTotal = 5;
 
 /**
