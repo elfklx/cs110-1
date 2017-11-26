@@ -50,6 +50,14 @@ bool HTTPRequest::containsName(const string& name) const {
   return requestHeader.containsName(name);
 }
 
+void HTTPRequest::addHeader(const string& name, const string& value) {
+  requestHeader.addHeader(name, value);
+}
+
+const string& HTTPRequest::getHeaderValueAsString(const string& name) const {
+  return requestHeader.getValueAsString(name);
+}
+
 void HTTPRequest::ingestPayload(istream& instream) {
   if (getMethod() != "POST") return;
   payload.ingestPayload(requestHeader, instream);
