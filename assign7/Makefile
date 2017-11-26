@@ -40,7 +40,8 @@ SOURCES = \
 	payload.cc \
 	cache.cc \
 	blacklist.cc \
-	client-socket.cc
+	client-socket.cc \
+	thread-pool.cc
 
 HEADERS = $(SOURCES:.cc=.h)
 OBJECTS = $(SOURCES:.cc=.o)
