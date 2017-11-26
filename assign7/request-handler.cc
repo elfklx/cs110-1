@@ -8,11 +8,11 @@
 #include "client-socket.h"
 #include <unistd.h>
 #include <netdb.h>
+#include <mutex>
 using namespace std;
 
 HTTPRequestHandler::HTTPRequestHandler() throw (HTTPProxyException) {
   blacklist.addToBlacklist("blocked-domains.txt");
-  cache = HTTPCache();
 }
 
 void HTTPRequestHandler::serviceRequest(const pair<int, string>& connection) throw() {
@@ -32,6 +32,8 @@ void HTTPRequestHandler::serviceRequest(const pair<int, string>& connection) thr
     sendResponse(clientStream, createErrorResponse(403, "Forbidden Content"));
     return;
   }
+  mutex& requestLock = cache.getLock(request);
+  lock_guard<mutex> lg(requestLock);
   if (cache.containsCacheEntry(request, response)) {
     sendResponse(clientStream, response);
     return;
@@ -45,10 +47,10 @@ void HTTPRequestHandler::serviceRequest(const pair<int, string>& connection) thr
   iosockstream serverStream(&serversb);
   sendRequest(serverStream, request);
   ingestResponse(serverStream, response);
+  sendResponse(clientStream, response);
   if (cache.shouldCache(request, response)) {
     cache.cacheEntry(request, response);
   }
-  sendResponse(clientStream, response);
 }
 
 void HTTPRequestHandler::clearCache() {
