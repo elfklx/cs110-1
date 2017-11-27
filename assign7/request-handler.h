@@ -32,10 +32,11 @@ class HTTPRequestHandler {
     unsigned short proxyPortNumber;
 
     void ingestRequest(std::istream& instream, const std::string& clientIPAddress, HTTPRequest& request);
-    void ingestResponse(std::istream& instream, HTTPResponse& response);
+    void ingestResponse(std::istream& instream, const HTTPRequest& request, HTTPResponse& response);
     HTTPResponse createErrorResponse(int code, const std::string& message);
     void sendRequest(std::ostream& outstream, const HTTPRequest& request);
     void sendResponse(std::ostream& outstream, const HTTPResponse& response);
+    bool findCircularProxyChain(const std::string& ipList, const std::string& ip);
 };
 
 #endif

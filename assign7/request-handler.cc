@@ -24,8 +24,11 @@ void HTTPRequestHandler::serviceRequest(const pair<int, string>& connection) thr
   HTTPResponse response;
   try {
     ingestRequest(clientStream, clientIPAddress, request);
-  } catch (const HTTPBadRequestException& hbre) {
-    sendResponse(clientStream, createErrorResponse(400, hbre.what()));
+  } catch (const HTTPBadRequestException& e) {
+    sendResponse(clientStream, createErrorResponse(400, e.what()));
+    return;
+  } catch (const HTTPCircularProxyChainException& e) {
+    sendResponse(clientStream, createErrorResponse(504, e.what()));
     return;
   }
   if (!blacklist.serverIsAllowed(request.getServer())) {
@@ -48,7 +51,7 @@ void HTTPRequestHandler::serviceRequest(const pair<int, string>& connection) thr
   sockbuf serversb(serverfd);
   iosockstream serverStream(&serversb);
   sendRequest(serverStream, request);
-  ingestResponse(serverStream, response);
+  ingestResponse(serverStream, request, response);
   sendResponse(clientStream, response);
   if (cache.shouldCache(request, response)) {
     cache.cacheEntry(request, response);
@@ -75,13 +78,26 @@ void HTTPRequestHandler::ingestRequest(istream& instream,
   request.ingestHeader(instream, clientIPAddress);
   request.ingestPayload(instream);
   request.addHeader("x-forwarded-proto", "http");
-  request.addHeader("x-forwarded-for",
-    request.getHeaderValueAsString("x-forwarded-for") + "," + clientIPAddress);
+  const string& ipList = request.getHeaderValueAsString("x-forwarded-for");
+  if (findCircularProxyChain(ipList, clientIPAddress)) {
+    throw HTTPCircularProxyChainException();
+  }
+  request.addHeader("x-forwarded-for", ipList + "," + clientIPAddress);
+}
+
+bool HTTPRequestHandler::findCircularProxyChain(const string& ipList, const string& ip) {
+  istringstream ss(ipList);
+  string element;
+  while (getline(ss, element, ',')) {
+    if (element == ip) return true;
+  }
+  return false;
 }
 
 void HTTPRequestHandler::ingestResponse(istream& instream,
-  HTTPResponse& response) {
+  const HTTPRequest& request, HTTPResponse& response) {
   response.ingestResponseHeader(instream);
+  if (request.getMethod() == "HEAD") return;
   response.ingestPayload(instream);
 }
 
