@@ -50,13 +50,21 @@ bool HTTPRequest::containsName(const string& name) const {
   return requestHeader.containsName(name);
 }
 
+void HTTPRequest::addHeader(const string& name, const string& value) {
+  requestHeader.addHeader(name, value);
+}
+
+const string& HTTPRequest::getHeaderValueAsString(const string& name) const {
+  return requestHeader.getValueAsString(name);
+}
+
 void HTTPRequest::ingestPayload(istream& instream) {
   if (getMethod() != "POST") return;
   payload.ingestPayload(requestHeader, instream);
 }
 
 ostream& operator<<(ostream& os, const HTTPRequest& rh) {
-  const string& path = rh.path;
+  const string& path = rh.usingProxy ? rh.url : rh.path;
   os << rh.method << " " << path << " " << rh.protocol << "\r\n";
   os << rh.requestHeader;
   os << "\r\n"; // blank line not printed by request header

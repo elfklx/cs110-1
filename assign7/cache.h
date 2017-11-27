@@ -44,6 +44,8 @@ class HTTPCache {
  */
   void setMaxAge(long maxAge) { this->maxAge = maxAge; }
   
+  std::mutex& getLock(const HTTPRequest& request);
+
  private:
   std::string getCacheDirectory() const;
   size_t hashRequest(const HTTPRequest& request) const;
@@ -61,6 +63,8 @@ class HTTPCache {
 
   long maxAge;
   std::string cacheDirectory;
+  static const int kNumLocks = 997;
+  std::vector<std::mutex> locks;
 };
 
 #endif

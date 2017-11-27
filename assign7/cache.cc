@@ -36,7 +36,7 @@
 #include "string-utils.h"
 using namespace std;
 
-HTTPCache::HTTPCache(): maxAge(-1) {
+HTTPCache::HTTPCache(): maxAge(-1), locks(kNumLocks) {
   cacheDirectory = getCacheDirectory();
   ensureDirectoryExists(cacheDirectory);
 }
@@ -283,4 +283,8 @@ string HTTPCache::getHostname() const {
   if (gethostname(name, HOST_NAME_MAX + 1) == -1) // function is thread safe
     throw HTTPCacheConfigException("Could not determine the name of your machine.");
   return name;
+}
+
+mutex& HTTPCache::getLock(const HTTPRequest& request) {
+  return locks[hashRequest(request) % kNumLocks];
 }
