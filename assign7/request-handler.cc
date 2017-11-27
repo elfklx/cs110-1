@@ -11,7 +11,7 @@
 #include <mutex>
 using namespace std;
 
-HTTPRequestHandler::HTTPRequestHandler() throw (HTTPProxyException) {
+HTTPRequestHandler::HTTPRequestHandler() throw (HTTPProxyException) : usingProxy(false) {
   blacklist.addToBlacklist("blocked-domains.txt");
 }
 
@@ -20,7 +20,7 @@ void HTTPRequestHandler::serviceRequest(const pair<int, string>& connection) thr
   const string& clientIPAddress = connection.second;
   sockbuf clientsb(clientfd);
   iosockstream clientStream(&clientsb);
-  HTTPRequest request;
+  HTTPRequest request(usingProxy);
   HTTPResponse response;
   try {
     ingestRequest(clientStream, clientIPAddress, request);
@@ -38,7 +38,9 @@ void HTTPRequestHandler::serviceRequest(const pair<int, string>& connection) thr
     sendResponse(clientStream, response);
     return;
   }
-  int serverfd = createClientSocket(request.getServer(), request.getPort());
+  const string& server = usingProxy ? proxyServer : request.getServer();
+  unsigned short port = usingProxy ? proxyPortNumber : request.getPort();
+  int serverfd = createClientSocket(server, port);
   if (serverfd == kClientSocketError) {
     sendResponse(clientStream, createErrorResponse(404, "Server Not Found"));
     return;
@@ -59,6 +61,12 @@ void HTTPRequestHandler::clearCache() {
 
 void HTTPRequestHandler::setCacheMaxAge(long maxAge) {
   cache.setMaxAge(maxAge);
+}
+
+void HTTPRequestHandler::setProxy(const std::string& server, unsigned short port) {
+  proxyServer = server;
+  proxyPortNumber = port;
+  usingProxy = true;
 }
 
 void HTTPRequestHandler::ingestRequest(istream& instream,

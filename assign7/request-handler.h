@@ -22,10 +22,14 @@ class HTTPRequestHandler {
     void serviceRequest(const std::pair<int, std::string>& connection) throw();
     void clearCache();
     void setCacheMaxAge(long maxAge);
+    void setProxy(const std::string& server, unsigned short port);
 
   private:
     HTTPBlacklist blacklist;
     HTTPCache cache;
+    bool usingProxy;
+    std::string proxyServer;
+    unsigned short proxyPortNumber;
 
     void ingestRequest(std::istream& instream, const std::string& clientIPAddress, HTTPRequest& request);
     void ingestResponse(std::istream& instream, HTTPResponse& response);

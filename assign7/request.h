@@ -28,6 +28,8 @@ class HTTPRequest {
   
  public:
 
+  HTTPRequest(bool useProxy) : usingProxy(useProxy) {}
+
 /**
  * Ingests, parses, and stores the first line of the HTTP request.
  * Recall that the first line of any valid proxied HTTP request is
@@ -118,6 +120,7 @@ class HTTPRequest {
   unsigned short port;
   std::string path;
   std::string protocol;
+  bool usingProxy;
 };
 
 #endif

@@ -64,7 +64,7 @@ void HTTPRequest::ingestPayload(istream& instream) {
 }
 
 ostream& operator<<(ostream& os, const HTTPRequest& rh) {
-  const string& path = rh.path;
+  const string& path = rh.usingProxy ? rh.url : rh.path;
   os << rh.method << " " << path << " " << rh.protocol << "\r\n";
   os << rh.requestHeader;
   os << "\r\n"; // blank line not printed by request header
