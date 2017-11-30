@@ -9,7 +9,7 @@ CXX = /usr/bin/g++-5
 #  -std=c++0x  go with the c++0x experimental extensions for thread support (and other nifty things)
 #  -D_GLIBCXX_USE_NANOSLEEP included for this_thread::sleep_for and this_thread::sleep_until support
 #  -D_GLIBCXX_USE_SCHED_YIELD included for this_thread::yield support
-CPPFLAGS = -g -Wall -pedantic -O0 -std=c++0x -D_GLIBCXX_USE_NANOSLEEP -D_GLIBCXX_USE_SCHED_YIELD -I/afs/ir/class/cs110/local/include/ -I/afs/ir/class/cs110/include
+CPPFLAGS = -g -Wall -pedantic -O0 -std=c++0x -D_GLIBCXX_USE_NANOSLEEP -D_GLIBCXX_USE_SCHED_YIELD -I../extra/include/ -I../extra/include
 
 # The LDFLAGS variable sets flags for linker
 # -lm        link to libm (math library)
@@ -17,7 +17,7 @@ CPPFLAGS = -g -Wall -pedantic -O0 -std=c++0x -D_GLIBCXX_USE_NANOSLEEP -D_GLIBCXX
 # -lthreads  link to course-specific concurrency functions and classes
 # -lrand     link to a C++11-backed random number generator module
 # -socket++  link to third party socket++ library for sockbuf and iosockstream classes
-LDFLAGS = -lm -lpthread -L/afs/ir/class/cs110/local/lib -lthreadpool -L/afs/ir/class/cs110/local/lib -lthreads -L/afs/ir/class/cs110/local/lib -lrand -L/afs/ir/class/cs110/lib/socket++ -lsocket++ -Wl,-rpath=/afs/ir/class/cs110/lib/socket++
+LDFLAGS = -lm -lpthread -L../extra/lib -lthreads -L../extra/lib -lrand -L../extra/lib/socket++ -lsocket++ -Wl,-rpath=../extra/lib/socket++
 
 # In this section, you list the files that are part of the project.
 # If you add/change names of header/source files, here is where you
@@ -25,7 +25,7 @@ LDFLAGS = -lm -lpthread -L/afs/ir/class/cs110/local/lib -lthreadpool -L/afs/ir/c
 PROGRAMS = mr.cc mrm.cc mrr.cc word-count-mapper.cc word-count-reducer.cc
 EXTRAS = mapreduce-server.cc mapreduce-worker.cc mapreduce-mapper.cc mapreduce-reducer.cc \
          client-socket.cc server-socket.cc mr-nodes.cc mr-messages.cc mr-env.cc mr-utils.cc mr-random.cc \
-         mr-names.cc
+         mr-names.cc thread-pool.cc
 HEADERS = $(EXTRAS:.cc=.h) mapreduce-server-exception.h thread-pool.h
 SOURCES = $(PROGRAMS) $(EXTRAS)
 OBJECTS = $(SOURCES:.cc=.o)

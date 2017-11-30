@@ -7,11 +7,17 @@
  * of child threads that exist solely to invoke previously scheduled thunks.
  */
 
-#ifndef _thread_pool__
-#define _thread_pool__
+#ifndef _thread_pool_
+#define _thread_pool_
 
-#include <cstdlib>
-#include <functional>
+#include <cstddef>     // for size_t
+#include <functional>  // for the function template used in the schedule signature
+#include <thread>      // for thread
+#include <vector>      // for vector
+#include <queue>
+#include <mutex>
+#include <condition_variable>
+#include <semaphore.h>
 
 class ThreadPool {
  public:
@@ -21,11 +27,6 @@ class ThreadPool {
  * number of threads.
  */
   ThreadPool(size_t numThreads);
-
-/**
- * Destroys the ThreadPool class
- */
-  ~ThreadPool();
 
 /**
  * Schedules the provided thunk (which is something that can
@@ -41,9 +42,38 @@ class ThreadPool {
  */
   void wait();
 
- private:
-  class ThreadPoolImpl *impl;
+/**
+ * Waits for all previously scheduled thunks to execute, and then
+ * properly brings down the ThreadPool and any resources tapped
+ * over the course of its lifetime.
+ */
+  ~ThreadPool();
 
+ private:
+  std::thread dt;                                   // dispatcher thread handle
+  std::vector<std::thread> wts;                     // worker thread handles
+  bool exit;                                        // exit flag
+  std::vector<bool> wBusy;                          // worker busy status
+  std::vector<std::function<void(void)>> wThunks;   // thunks for each worker
+  std::queue<std::function<void(void)>> thunkQueue; // thunk queue
+  std::mutex mThunkQueue;                           // thunk queue mutex
+  std::condition_variable_any cvThunkQueue;         // thunk queue cv
+  std::mutex mWorkerStatus;                         // wBusy mutex
+  std::condition_variable_any cvWorkerStatus;       // wBusy cv
+  std::vector<semaphore> sWorkers;                  // worker semaphore vector
+
+  void dispatcher();                                // dispatcher thread routine
+  void worker(size_t workerID);                     // worker thread routine
+
+/**
+ * ThreadPools are the type of thing that shouldn't be cloneable, since it's
+ * not clear what it means to clone a ThreadPool (should copies of all outstanding
+ * functions to be executed be copied?).
+ *
+ * In order to prevent cloning, we remove the copy constructor and the
+ * assignment operator.  By doing so, the compiler will ensure we never clone
+ * a ThreadPool.
+ */
   ThreadPool(const ThreadPool& original) = delete;
   ThreadPool& operator=(const ThreadPool& rhs) = delete;
 };
